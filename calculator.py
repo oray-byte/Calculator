@@ -15,9 +15,12 @@ class Calculator(tkr.Frame):
     previous: str = ''
     current: str = ''
     operator: str = ''
+    memory: List[str] = []
     def __init__(self, master=None) -> None:
         super().__init__(master)
         self.master = master
+        self.menu = tkr.Menu(self.master, bg="gray25")
+        self.master.config(menu=self.menu)
         tkr.Frame.pack(self)
         self.init_frame()
 
@@ -31,57 +34,91 @@ class Calculator(tkr.Frame):
 
 # ------Useful Functions-------------------------------------------------------
     def _clear(self, *args) -> None:
-        for canvas in args:
-            canvas.delete("all")
+        """
+        Used for quickly clearing what is wanted
+        """
+        for arg in args:
+            if arg == "p": self.previous = ''
+            elif arg == "o": self.operator = ''
+            elif arg == "c": self.current = ''
+            else: arg.delete("all")
 
     def _format_string(self, temp) -> str:
-        
-        # FIXME Add functionality to chop off unnessessary zeros
-        # FIXME Add functionality to add commas for each 3 digits before .
-        return "{:.2f}".format(temp)
+        """
+        Makes the number on screen look nice
+        Adds commas to the number and limits the decimal place to 5 digits
+        """
+        # FIXME Replace this!
+        if temp in ["-", ".", "-."]: # This works but I do not like it
+            return temp
+        temp = str(temp).replace(",", "")
+        if temp.count(".") == 0:
+            return "{:,.0f}".format(float(temp))
+        else:
+            number = len((str(temp).split(".")[1]))
+            if number == 1 and str(temp).split(".")[1][0] == '0': number = 0
+            elif number > 5: number = 5
+            return "{:,.{number}f}".format(float(temp), number=number)
 
-    def _operator_input(self, function, topCanvas, bottomCanvas, operator) -> None:
+    def _operator_input(self, font, topCanvas, bottomCanvas, operator) -> None:
         if self.current != '':
-            self._clear(topCanvas, bottomCanvas)
-            self.previous = self.current + " {}".format(operator)
-            self.current = ''
-            function(self.previous, topCanvas)
+            self.previous = self._format_string(self.current) + " {}".format(operator)
+            self._clear(topCanvas, bottomCanvas, "c")
+            # FIXME Do not like this
+            topCanvas.create_text(390, 50, text= self.previous,
+                                     fill="snow", font=font, anchor=tkr.E)
             self.operator = operator
         else:
             self._clear(topCanvas)
-            self.previous = self.previous + " {}".format(operator)
-            function(self.previous, topCanvas)
+            self.previous = self._format_string(self.previous) + " {}".format(operator)
+            # FIXME I also do not like this
+            topCanvas.create_text(390, 50, text= self.previous,
+                                     fill="snow", font=font, anchor=tkr.E)
             self.operator = operator
         
     def _do_math(self, function, topCanvas, bottomCanvas, operator=None):
-        temp: float = 0
+        answer: float = 0
+        temp: bool = True # Determines if previous or current format is used
+        currentFormat: str = self.current
+        previousFormat: str = self.previous
+
+        # Takes commas out to convert into a float
+        self.current = self.current.replace(",", "")
+        self.previous = self.previous.replace(",", "")
+
         if operator == "x²":
             if self.current != '':
-                temp = float(self.current) ** 2
-            else:
-                temp = float(self.previous) ** 2
-        if self.previous != '' and self.previous != 'x²':
-            if operator == "+":
-                temp = float(self.previous.split()[0]) + float(self.current)
-            elif operator == "-":
-                temp = float(self.previous.split()[0]) - float(self.current)
-            elif operator == "x":
-                temp = float(self.previous.split()[0]) * float(self.current)
-            elif operator == "÷":
-                if self.current == '0':
-                    self._clear(topCanvas, bottomCanvas)
-                    self.current = ''
-                    self.previous = ''
-                    self.operator = ''
-                    tkrm.showinfo("Error", "Cannot divide by zero")
-                    return
-                else:
-                    temp = float(self.previous.split()[0]) / float(self.current)
+                answer = float(self.current) ** 2
+                
+            elif self.previous != '':
+                answer = float(self.previous) ** 2
+                temp = False
+        else:
+            if operator == "÷":
+                operator = "/"
 
-        self.previous = self._format_string(temp)
-        self.current = ''
-        self.operator = ''
-        self._clear(topCanvas, bottomCanvas)
+            expression: str = "{} {} {}".format(self.previous.split()[0],
+                                                operator, self.current)
+            answer = eval(expression)
+
+        if self.previous != '' and self.previous != 'x²':
+            pass
+
+        # Appends equations as strings to memory list for the show_memory function to handle          
+        if operator == "x²" and temp:
+            self.memory.append("{}² = {}".
+                           format(currentFormat, self._format_string(answer)))
+        elif operator == "x²" and not temp:
+            self.memory.append("{}² = {}".
+                           format(previousFormat, self._format_string(answer)))
+        else:
+            self.memory.append("{} {} = {}".
+                           format(previousFormat, currentFormat, 
+                                  self._format_string(answer)))
+
+        # Assigns previous(current) to the answer, clears the screen, and appends the answer to top screen
+        self.previous = str(answer)
+        self._clear(topCanvas, bottomCanvas, "c", "o")
         function(self.previous, topCanvas)
         
     def init_button(self, btn, topCanvas, bottomCanvas) -> tkr.Button:
@@ -98,17 +135,6 @@ class Calculator(tkr.Frame):
         btn.bind("<Leave>", self._on_leave)
         btn["command"] = (lambda btn=btn: self._append_to_frame(btn, topCanvas, bottomCanvas)) 
         return btn
-        
-    def reorder_array(self, array, row=0) -> List[tkr.Button]: # Now Obsolete
-        """
-        Reorders the numbers array where the buttons are
-        similar to that of a number pad
-        """
-        start = row * 3 # Needs to be reordered in sets of three
-        temp = array[start:(start + 3)]
-        r_temp = temp[::-1] # Same as temp.reverse()
-        array[start:(start + 3)] = r_temp # Replace the portion needed of reordered with the reordered portion
-        return array
     
     def pack_numbers(self, buttonFrame, topCanvas, bottomCanvas, buttonFont) -> None:
         buttonLabels = ["DEL", "AC", "x²", "+",
@@ -127,103 +153,148 @@ class Calculator(tkr.Frame):
             for c in range(4): # 4 columns
                 buttons[index].grid(row=r, column=c)
                 index += 1
-# -----------------------------------------------------------------------------        
+# -----------------------------------------------------------------------------
+
+# ------Main Functions---------------------------------------------------------       
     def _append_to_frame(self, btn, topCanvas, bottomCanvas) -> None:
         """
         Takes the value of the pressed-button's text and appends it
         to the current text of the canvas.
         """
         canvasFont: tkrf.Font = tkrf.Font(self, family="Stencil", size="25")
-
+        
+        # Function used to append inputs and outputs to the screen
         c_text = (lambda text, canvas:
-                  canvas.create_text(390, 50, text=text, fill="snow",
-                                     font=canvasFont, anchor=tkr.E))
+                  canvas.create_text(390, 50, text=self._format_string(text),
+                                     fill="snow", font=canvasFont, anchor=tkr.E))
 
         if ((str(btn.cget("text")).isnumeric()) or ((str(btn.cget("text")) == ".") and (self.current.count(".") < 1))):
             self.current = self.current + str(btn.cget("text"))
             self._clear(bottomCanvas)
             c_text(self.current, bottomCanvas)
+            return
             
         # Handles functionality when DEL button is pressed
         if btn.cget("text") == "DEL":
             self.current = self.current[:-1]
-            # bottomCanvas.delete("all")
             self._clear(bottomCanvas)
             c_text(self.current, bottomCanvas) 
+            return
 
         # Handles functionality when ± button is pressed
         if btn.cget("text") == "±":
             if (self.current != '-' or self.current == '') and self.current.count("-") < 1:
                 self.current = '-' + self.current
-                bottomCanvas.delete("all")
+                self._clear(bottomCanvas)
                 c_text(self.current, bottomCanvas)
+                return
             else:
                 self.current = self.current[1:]
-                bottomCanvas.delete("all")
+                self._clear(bottomCanvas)
                 c_text(self.current, bottomCanvas)
+                return
         
         # Handles functionality when AC button is pressed
         if btn.cget("text") == "AC":
-            self.current = '' # Clears current number
-            self.previous = ''
-            self.operator = ''
-            self._clear(bottomCanvas, topCanvas)
+            self._clear(bottomCanvas, topCanvas, "p", "o", "c")
+            return
          
         # Handles functionality when = button is pressed
-        if btn.cget("text") == "=":
+        if btn.cget("text") == "=" and self.current != '-':
             if self.operator == '': # This is if no operator has been choosen
-                self._clear(topCanvas, bottomCanvas)
-                # topCanvas.delete("all") # Delete top canvas
                 self.previous = self.current # Make current number the previous number
-                self.current = '' # Clear current number
-                # bottomCanvas.delete("all") # Clear bottom screen
+                self._clear(topCanvas, bottomCanvas, "c")
                 c_text(self.previous, topCanvas) # Display previous number
+                return
             else:
                 self._do_math(c_text, topCanvas, bottomCanvas, self.operator) # Display the outcome
+                return
         
         # Handles functionality when + button is pressed
         if btn.cget("text") == "+":
             if self.operator == '': # Checks to ensure only one operation is chosen (same for each operation function)
-                self._operator_input(c_text, topCanvas, bottomCanvas, "+") # Handles operation input
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "+") # Handles operation input
+                return
             else:
                 self._do_math(c_text, topCanvas, bottomCanvas, self.operator)
-                self._operator_input(c_text, topCanvas, bottomCanvas, "+")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "+")
+                return
         
         # Handles functionality when - button is pressed
         if btn.cget("text") == "-":
             if self.operator == '':
-                self._operator_input(c_text, topCanvas, bottomCanvas, "-")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "-")
+                return
             else:
                 self._do_math(c_text, topCanvas, bottomCanvas, self.operator)
-                self._operator_input(c_text, topCanvas, bottomCanvas, "-")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "-")
+                return
         
         # Handles functionality when - button is pressed
         if btn.cget("text") == "÷":
             if self.operator == '':
-                self._operator_input(c_text, topCanvas, bottomCanvas, "÷")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "÷")
+                return
             else:
                 self._do_math(c_text, topCanvas, bottomCanvas, self.operator)
-                self._operator_input(c_text, topCanvas, bottomCanvas, "÷")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "÷")
+                return
         
         # Handles functionality when x button is pressed
         if btn.cget("text") == "x":
             if self.operator == '':
-                self._operator_input(c_text, topCanvas, bottomCanvas, "x")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "x")
+                return
             else:
                 self._do_math(c_text, topCanvas, bottomCanvas, self.operator)
-                self._operator_input(c_text, topCanvas, bottomCanvas, "x")
+                self._operator_input(canvasFont, topCanvas, bottomCanvas, "x")
+                return
         
         # Handles functionality when x² button is pressed
         if btn.cget("text") == "x²":
             if self.operator == '':
                 self.operator = "x²"
                 self._do_math(c_text, topCanvas, bottomCanvas, self.operator)
-          
+                return
+            
+    def show_memory(self):
+        """
+        Displays memory of recent equations
+        """
+        # Creates new window when 'Memory' is pressed under memory
+        newWindow = tkr.Toplevel(self.master, bg="gray25")
+        newWindow.title("Memory")
+        newWindow.geometry("500x750")
         
+        # Creating a canvas object to display previous equations
+        displayFont: tkrf.Font = tkrf.Font(self, family="Stencil", size="20")
+        display: tkr.Frame = tkr.Canvas(newWindow, height=400, width=400, bg=newWindow["bg"])
+        display.pack(expand=tkr.YES, fill=tkr.BOTH)
+        
+        # Displaying previous equations
+        for i in range(len(self.memory)):
+            display.create_text(5, 25 + (i * 25), text=self.memory[i],
+                                fill="snow", font=displayFont, anchor=tkr.W)
+            
+        # FIXME: Add functionality to update it in real time
+        # FIXME: Memory can only display 29 equations. So delete the top equation when another is added
+    
     def init_frame(self) -> None:
         self.master.title("Calculator") # Sets title of the frame to "Calculator"
-        buttonFrame: tkr.Frame = tkr.Frame(self, height=100, width=200, bg="gray25", bd=0) # Frame that holds the buttons
+        
+        # Adding Memory menu and commands
+        memMenu = tkr.Menu(self.menu, tearoff=0, bg="white")
+        memMenu.add_command(label="Show", command=self.show_memory)
+        # Adding Mode menu and commands
+        modeMenu = tkr.Menu(self.menu, tearoff=0, bg="white")
+        modeMenu.add_command(label="Graphing", command=None)
+        modeMenu.add_command(label="Arithmetic", command=None)
+
+        self.menu.add_cascade(label="Memory", menu=memMenu)
+        self.menu.add_cascade(label="Graph", menu=modeMenu)
+        
         canvasFrame: tkr.Frame = tkr.Frame(self, height=200, width=200, bg="gray25", bd=5, relief=tkr.RIDGE) # Frame that holds the screen/canvas
+        buttonFrame: tkr.Frame = tkr.Frame(self, height=100, width=200, bg="gray25", bd=0) # Frame that holds the buttons
         topCanvas: tkr.Frame = tkr.Canvas(canvasFrame, width=200, height=100, bg="gray25", highlightthickness=0) # Where inputed numbers and outputs will be displayed
         bottomCanvas: tkr.Frame = tkr.Canvas(canvasFrame, width=200, height=100, bg="gray25", highlightthickness=0)
         
@@ -237,7 +308,8 @@ class Calculator(tkr.Frame):
 
         topCanvas.pack(side=tkr.TOP, expand=tkr.YES, fill=tkr.BOTH)
         bottomCanvas.pack(side=tkr.BOTTOM, expand=tkr.YES, fill=tkr.BOTH)
-        
-root = tkr.Tk()
-app = Calculator(root)
-root.mainloop()
+# -----------------------------------------------------------------------------        
+
+calcRoot = tkr.Tk()
+app = Calculator(calcRoot)
+calcRoot.mainloop()
