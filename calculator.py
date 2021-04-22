@@ -9,13 +9,16 @@ import tkinter as tkr
 import tkinter.messagebox as tkrm # Using as a debug tool
 import tkinter.font as tkrf
 from typing import List
+import ctypes
 
 class Calculator(tkr.Frame):
     """Main frame that the calculator will be held in"""
     previous: str = ''
     current: str = ''
     operator: str = ''
+    memoryWindowState: bool = False
     memory: List[str] = []
+
     def __init__(self, master=None) -> None:
         super().__init__(master)
         self.master = master
@@ -33,6 +36,10 @@ class Calculator(tkr.Frame):
 # -----------------------------------------------------------------------------
 
 # ------Useful Functions-------------------------------------------------------
+    def _update_state(self) -> None:
+        if self.memoryWindowState: self.memoryWindowState = False
+        else: self.memoryWindowState = True
+
     def _clear(self, *args) -> None:
         """
         Used for quickly clearing what is wanted
@@ -77,7 +84,7 @@ class Calculator(tkr.Frame):
             self.operator = operator
         
     def _do_math(self, function, topCanvas, bottomCanvas, operator=None):
-        answer: float = 0
+        answer: float = 0.0
         temp: bool = True # Determines if previous or current format is used
         currentFormat: str = self.current
         previousFormat: str = self.previous
@@ -96,13 +103,12 @@ class Calculator(tkr.Frame):
         else:
             if operator == "÷":
                 operator = "/"
+            elif operator == "x":
+                operator = "*"
 
             expression: str = "{} {} {}".format(self.previous.split()[0],
                                                 operator, self.current)
             answer = eval(expression)
-
-        if self.previous != '' and self.previous != 'x²':
-            pass
 
         # Appends equations as strings to memory list for the show_memory function to handle          
         if operator == "x²" and temp:
@@ -110,7 +116,8 @@ class Calculator(tkr.Frame):
                            format(currentFormat, self._format_string(answer)))
         elif operator == "x²" and not temp:
             self.memory.append("{}² = {}".
-                           format(previousFormat, self._format_string(answer)))
+                           format(self._format_string(previousFormat),
+                                  self._format_string(answer)))
         else:
             self.memory.append("{} {} = {}".
                            format(previousFormat, currentFormat, 
@@ -275,6 +282,8 @@ class Calculator(tkr.Frame):
         for i in range(len(self.memory)):
             display.create_text(5, 25 + (i * 25), text=self.memory[i],
                                 fill="snow", font=displayFont, anchor=tkr.W)
+        newWindow.mainloop()
+        newWindow.protocol("WM_DELETE_WINDOW", self._update_state())
             
         # FIXME: Add functionality to update it in real time
         # FIXME: Memory can only display 29 equations. So delete the top equation when another is added
@@ -312,4 +321,5 @@ class Calculator(tkr.Frame):
 
 calcRoot = tkr.Tk()
 app = Calculator(calcRoot)
+ctypes.windll.user32.ShowWindow(ctypes.windll.kernel32.GetConsoleWindow(), 6) # Minimizes Python Console
 calcRoot.mainloop()
